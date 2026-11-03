@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>ลงทะเบียนเข้าใช้สนามบาส</title>
+
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 20px;
+      background: #f3f4f6;
+      color: #111;
+      font-family: Arial, "Noto Sans Thai", sans-serif;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 560px;
+      margin: auto;
+      padding: 30px;
+      background: white;
+      border-radius: 18px;
+      box-shadow: 0 3px 14px rgba(0, 0, 0, .12);
+    }
+
+    h1 {
+      margin: 0 0 12px;
+      text-align: center;
+      font-size: 29px;
+    }
+
+    .description {
+      margin-bottom: 28px;
+      color: #666;
+      text-align: center;
+      font-size: 16px;
+    }
+
+    label {
+      display: block;
+      margin: 18px 0 8px;
+      font-size: 19px;
+      font-weight: bold;
+    }
+
+    input {
+      width: 100%;
+      height: 58px;
+      padding: 0 16px;
+      border: 1px solid #c9c9c9;
+      border-radius: 10px;
+      font-size: 18px;
+      outline: none;
+    }
+
+    input:disabled {
+      background: #eee;
+      color: #555;
+    }
+
+    button {
+      width: 100%;
+      height: 58px;
+      margin-top: 26px;
+      border: 0;
+      border-radius: 10px;
+      background: #1677ff;
+      color: white;
+      font-size: 18px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      background: #999;
+      cursor: not-allowed;
+    }
+
+    #status {
+      min-height: 30px;
+      margin-top: 20px;
+      text-align: center;
+      font-size: 17px;
+      line-height: 1.6;
+      white-space: pre-line;
+    }
+  </style>
+</head>
+
+<body>
+  <main class="container">
+    <h1>ลงทะเบียนเข้าใช้สนามบาส</h1>
+
+    <div class="description">
+      ครั้งแรกกรอกข้อมูลส่วนตัว ครั้งต่อไปกดยืนยันได้เลย
+    </div>
+
+    <label for="firstName">ชื่อ</label>
+    <input id="firstName" type="text" placeholder="กรอกชื่อ">
+
+    <label for="lastName">นามสกุล</label>
+    <input id="lastName" type="text" placeholder="กรอกนามสกุล">
+
+    <label for="phone">เบอร์โทรศัพท์</label>
+    <input id="phone" type="tel" placeholder="กรอกเบอร์โทรศัพท์">
+
+    <button id="saveButton" type="button" onclick="saveData()" disabled>
+      กำลังเริ่มต้น LIFF...
+    </button>
+
+    <div id="status"></div>
+  </main>
+
+  <script>
+    const LIFF_ID = '2012357388-TIqr6Tpg';
+
+    const APPS_SCRIPT_URL =
+      'https://script.google.com/macros/s/AKfycbwhpzij6SLPMBJ9DZEzVrlSkLaFjQAnP6tLlgKsA4B9D-xztx5GTi5g7svDyTbwvqcF/exec';
+
+    let userId = '';
+    let existingMember = false;
+
+    function setStatus(message, color) {
+      const status = document.getElementById('status');
+      status.textContent = message;
+      status.style.color = color || '#333';
+    }
+
+    function setButton(message, disabled) {
+      const button = document.getElementById('saveButton');
+      button.textContent = message;
+      button.disabled = disabled;
+    }
+
+    async function callAppsScript(action, data) {
+      const response = await fetch(APPS_SCRIPT_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8'
+        },
+        body: JSON.stringify({
+          action: action,
+          data: data || null
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(
+          'Apps Script ตอบกลับผิดพลาด HTTP ' +
+          response.status
+        );
+      }
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.error || 'เกิดข้อผิดพลาด');
+      }
+
+      return result.result;
+    }
+
+    async function startLiff() {
+      try {
+        setStatus('กำลังเริ่มต้น LIFF...');
+        setButton('กำลังเชื่อมต่อ LINE...', true);
+
+        await liff.init({
+          liffId: LIFF_ID,
+          withLoginOnExternalBrowser: true
+        });
+
+        if (!liff.isLoggedIn()) {
+          setStatus(
+            'กรุณาเปิดผ่านลิงก์ LIFF ในแอป LINE',
+            'red'
+          );
+          return;
+        }
+
+        const profile = await liff.getProfile();
+        userId = profile.userId;
+
+        setStatus('กำลังตรวจสอบข้อมูลเดิม...');
+        await checkExistingMember();
+
+      } catch (error) {
+        console.error(error);
+
+        setStatus(
+          'เชื่อมต่อไม่สำเร็จ:\n' + error.message,
+          'red'
+        );
+
+        setButton('เชื่อมต่อไม่สำเร็จ', true);
+      }
+    }
+
+    async function checkExistingMember() {
+      try {
+        const result = await callAppsScript(
+          'checkMember',
+          { userId: userId }
+        );
+
+        const firstName =
+          document.getElementById('firstName');
+
+        const lastName =
+          document.getElementById('lastName');
+
+        const phone =
+          document.getElementById('phone');
+
+        if (result.found && result.member) {
+          existingMember = true;
+
+          firstName.value = result.member.firstName;
+          lastName.value = result.member.lastName;
+          phone.value = result.member.phone;
+
+          firstName.disabled = true;
+          lastName.disabled = true;
+          phone.disabled = true;
+
+          setStatus(
+            'พบข้อมูลเดิมแล้ว กรุณากดยืนยันการเข้าใช้งาน'
+          );
+
+          setButton('ยืนยันการเข้าใช้งาน', false);
+
+        } else {
+          existingMember = false;
+
+          firstName.disabled = false;
+          lastName.disabled = false;
+          phone.disabled = false;
+
+          setStatus(
+            'กรุณากรอกข้อมูลสำหรับการใช้งานครั้งแรก'
+          );
+
+          setButton('บันทึกข้อมูลและเข้าใช้งาน', false);
+        }
+
+      } catch (error) {
+        setStatus(
+          'ตรวจสอบข้อมูลไม่สำเร็จ:\n' + error.message,
+          'red'
+        );
+
+        setButton('ตรวจสอบไม่สำเร็จ', true);
+      }
+    }
+
+    async function saveData() {
+      const firstName =
+        document.getElementById('firstName').value.trim();
+
+      const lastName =
+        document.getElementById('lastName').value.trim();
+
+      const phone =
+        document.getElementById('phone').value.trim();
+
+      if (!firstName || !lastName || !phone) {
+        setStatus('กรุณากรอกข้อมูลให้ครบทุกช่อง', 'red');
+        return;
+      }
+
+      setStatus('กำลังบันทึกข้อมูล...');
+      setButton('กำลังบันทึก...', true);
+
+      try {
+        const result = await callAppsScript(
+          'saveCheckIn',
+          {
+            userId: userId,
+            firstName: firstName,
+            lastName: lastName,
+            phone: phone
+          }
+        );
+
+        setStatus(
+          result.message +
+          '\nผู้ใช้: ' + result.name +
+          '\nเวลา: ' + result.time,
+          'green'
+        );
+
+        setButton('บันทึกเรียบร้อยแล้ว', true);
+
+      } catch (error) {
+        setStatus(
+          'บันทึกไม่สำเร็จ:\n' + error.message,
+          'red'
+        );
+
+        setButton(
+          existingMember
+            ? 'ยืนยันการเข้าใช้งาน'
+            : 'ลองบันทึกอีกครั้ง',
+          false
+        );
+      }
+    }
+
+    startLiff();
+  </script>
+</body>
+</html>
